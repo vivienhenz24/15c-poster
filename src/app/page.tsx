@@ -5,9 +5,13 @@ export default function Home() {
     <main className="min-h-screen flex flex-col text-white">
       <TopBar />
       <div className="flex flex-1 flex-col items-center justify-center px-4">
-      <h1 className="text-5xl font-bold mb-4 drop-shadow-md text-center">Physics 15c Project</h1>
-      <p className="text-xl opacity-80 mb-8 max-w-xl text-center">Welcome to my Physics 15c project! Explore concepts, simulations, and visualizations about electromagnetism, waves, and much more. Get started below!</p>
-      {/* Add more homepage links or showcase components here if desired */}
+        <label htmlFor="hero-search" className="sr-only">Search</label>
+        <input
+          id="hero-search"
+          type="text"
+          placeholder="Type here..."
+          className="w-full max-w-xl rounded-md bg-white/90 text-black placeholder:text-black/60 shadow-lg ring-1 ring-white/30 focus:ring-2 focus:ring-white/60 px-6 py-4 outline-none backdrop-blur-sm"
+        />
       </div>
     </main>
   );
