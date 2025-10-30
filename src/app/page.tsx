@@ -1,4 +1,4 @@
-import Example from '@/components/Example';
+
 export default function Home() {
   return (
     <main className="home-gradient-bg flex min-h-screen flex-col items-center justify-center text-white">
