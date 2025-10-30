@@ -1,4 +1,23 @@
 "use client";
+/**
+ * @param {Object} [props]
+ * @param {string} [props.className]
+ * @param {number} [props.dpr]
+ * @param {boolean} [props.paused]
+ * @param {string[]} [props.gradientColors]
+ * @param {number} [props.angle]
+ * @param {number} [props.noise]
+ * @param {number} [props.blindCount]
+ * @param {number} [props.blindMinWidth]
+ * @param {number} [props.mouseDampening]
+ * @param {boolean} [props.mirrorGradient]
+ * @param {number} [props.spotlightRadius]
+ * @param {number} [props.spotlightSoftness]
+ * @param {number} [props.spotlightOpacity]
+ * @param {number} [props.distortAmount]
+ * @param {('left'|'right')} [props.shineDirection]
+ * @param {string} [props.mixBlendMode]
+ */
 import { useEffect, useRef } from 'react';
 import { Renderer, Program, Mesh, Triangle } from 'ogl';
 import './GradientBlinds.css';
@@ -23,9 +42,9 @@ const prepStops = stops => {
 
 const GradientBlinds = ({
   className = "",
-  dpr,
+  dpr = undefined,
   paused = false,
-  gradientColors,
+  gradientColors = undefined,
   angle = 0,
   noise = 0.3,
   blindCount = 16,
