@@ -29,13 +29,15 @@ export default function Home() {
            
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="mb-4 text-sm uppercase tracking-[0.3em] text-white/70">
-              Welcome to PixelBlast
-            </span>
-            <h1 className="text-5xl font-semibold md:text-6xl">Hello World</h1>
-            <p className="mt-4 max-w-xl text-lg text-white/70">
-              Experience a dynamic, interactive hero powered by WebGL dithering effects.
-            </p>
+            {/* Subtle dark backdrop for text area */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/40" />
+            
+            <div className="relative z-10 flex flex-col items-center">
+              <h1 className="text-5xl font-normal md:text-6xl max-w-3xl px-6 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] text-center">How AI has reshaped Harvard students' work</h1>
+              <p className="mt-6 text-lg font-normal text-white max-w-2xl px-6 leading-relaxed drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)] text-center">
+                An exploration of Qguide data analyzing course workloads patterns over time, with a focus on how the introduction of AI tools have affected them.
+              </p>
+            </div>
           </div>
         </div>
       </section>
