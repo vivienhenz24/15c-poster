@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -193,6 +193,8 @@ const int   MAX_CLICKS = 10;
 uniform vec2  uClickPos  [MAX_CLICKS];
 uniform float uClickTimes[MAX_CLICKS];
 
+out vec4 fragColor;
+
 float Bayer2(vec2 a) {
   a = floor(a);
   return fract(a.x / 2. + a.y * a.y * .75);
@@ -319,7 +321,7 @@ void main(){
   }
 
   vec3 color = uColor;
-  gl_FragColor = vec4(color, M);
+  fragColor = vec4(color, M);
 }
 `;
 
@@ -387,225 +389,50 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
   } | null>(null);
   const prevConfigRef = useRef<any>(null);
   useEffect(() => {
-    console.log('[PixelBlast] useEffect started');
     const container = containerRef.current;
-    if (!container) {
-      console.error('[PixelBlast] Container ref is null!');
-      return;
-    }
-    
-    console.log('[PixelBlast] Container found:', {
-      clientWidth: container.clientWidth,
-      clientHeight: container.clientHeight,
-      offsetWidth: container.offsetWidth,
-      offsetHeight: container.offsetHeight,
-      getBoundingClientRect: container.getBoundingClientRect()
-    });
-    
+    if (!container) return;
     speedRef.current = speed;
     const needsReinitKeys = ['antialias', 'liquid', 'noiseAmount'];
     const cfg = { antialias, liquid, noiseAmount };
     let mustReinit = false;
-    if (!threeRef.current) {
-      mustReinit = true;
-      console.log('[PixelBlast] No Three.js instance, must reinit');
-    } else if (prevConfigRef.current) {
+    if (!threeRef.current) mustReinit = true;
+    else if (prevConfigRef.current) {
       for (const k of needsReinitKeys)
         if (prevConfigRef.current[k] !== (cfg as any)[k]) {
           mustReinit = true;
-          console.log('[PixelBlast] Config changed, must reinit');
           break;
         }
     }
-    
-    let dimensionCheckCount = 0;
-    // Wait for container to have dimensions before initializing
-    const init = () => {
-      dimensionCheckCount++;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      
-      if (w === 0 || h === 0) {
-        if (dimensionCheckCount < 100) { // Prevent infinite loop
-          console.log(`[PixelBlast] Waiting for dimensions... (attempt ${dimensionCheckCount})`, { w, h });
-          requestAnimationFrame(init);
-        } else {
-          console.error('[PixelBlast] Container dimensions still 0 after 100 attempts!', {
-            clientWidth: w,
-            clientHeight: h,
-            offsetWidth: container.offsetWidth,
-            offsetHeight: container.offsetHeight,
-            computedStyle: window.getComputedStyle(container)
-          });
-        }
-        return;
+    if (mustReinit) {
+      if (threeRef.current) {
+        const t = threeRef.current;
+        t.resizeObserver?.disconnect();
+        cancelAnimationFrame(t.raf!);
+        t.quad?.geometry.dispose();
+        t.material.dispose();
+        t.composer?.dispose();
+        t.renderer.dispose();
+        if (t.renderer.domElement.parentElement === container) container.removeChild(t.renderer.domElement);
+        threeRef.current = null;
       }
-      
-      console.log('[PixelBlast] Container has dimensions, initializing Three.js:', { w, h });
-      initializeThree();
-    };
-    
-    const initializeThree = () => {
-      // TEMPORARY TEST FLAG: Set to true to use solid red material (bypasses shader/composer)
-      const USE_TEST_MATERIAL = false; // Changed back to false to use shader
-      
-      console.log('[PixelBlast] initializeThree called, mustReinit:', mustReinit);
-      try {
-        if (mustReinit) {
-          if (threeRef.current) {
-            console.log('[PixelBlast] Cleaning up existing Three.js instance');
-            const t = threeRef.current;
-            t.resizeObserver?.disconnect();
-            cancelAnimationFrame(t.raf!);
-            t.quad?.geometry.dispose();
-            t.material.dispose();
-            t.composer?.dispose();
-            t.renderer.dispose();
-            if (t.renderer.domElement.parentElement === container) container.removeChild(t.renderer.domElement);
-            threeRef.current = null;
-          }
-          
-          console.log('[PixelBlast] Creating WebGL renderer...');
-          const canvas = document.createElement('canvas');
-          const renderer = new THREE.WebGLRenderer({
-            canvas,
-            antialias,
-            alpha: true,
-            powerPreference: 'high-performance'
-          });
-          
-          console.log('[PixelBlast] WebGL renderer created:', {
-            canvas: renderer.domElement,
-            webglContext: renderer.getContext(),
-            pixelRatio: renderer.getPixelRatio()
-          });
-          
-          renderer.domElement.style.width = '100%';
-          renderer.domElement.style.height = '100%';
-          renderer.domElement.style.display = 'block';
-          renderer.domElement.style.position = 'absolute';
-          renderer.domElement.style.top = '0';
-          renderer.domElement.style.left = '0';
-          renderer.domElement.style.zIndex = '1'; // Above container background
-          renderer.domElement.style.pointerEvents = 'auto';
-          renderer.domElement.style.opacity = '1';
-          renderer.domElement.style.visibility = 'visible';
-          renderer.domElement.style.backgroundColor = 'transparent';
-          
-          // Force visibility with !important via setAttribute
-          renderer.domElement.setAttribute('style', 
-            renderer.domElement.getAttribute('style') + 
-            ' !important; display: block !important; visibility: visible !important; opacity: 1 !important;'
-          );
-          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-          
-          console.log('[PixelBlast] Appending canvas to container');
-          container.appendChild(renderer.domElement);
-          
-          // Force a reflow to ensure styles are applied
-          void renderer.domElement.offsetHeight;
-          
-          // Set background based on mode
-          // For shader to be visible, we need a non-transparent background
-          if (USE_TEST_MATERIAL) {
-            renderer.setClearColor(0x000000, 1); // Black background for contrast
-            console.log('[PixelBlast] Renderer set to black background (TEST MODE)');
-          } else {
-            // Even with transparent=true, use a dark background so shader is visible
-            renderer.setClearColor(0x000000, 1);
-            console.log('[PixelBlast] Renderer set to black background (shader needs visible background)');
-          }
-          
-          // TEMPORARY TEST DISABLED - was causing red flash on reload
-          /*
-          setTimeout(() => {
-            const gl = renderer.getContext();
-            const testCanvas = document.createElement('canvas');
-            testCanvas.width = 100;
-            testCanvas.height = 100;
-            const ctx = testCanvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = 'red';
-              ctx.fillRect(0, 0, 100, 100);
-              console.log('[PixelBlast] TEST: Created red test canvas');
-              
-              // Check if our WebGL canvas is actually in DOM and visible
-              const canvasRect = renderer.domElement.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-              const canvasComputedStyle = window.getComputedStyle(renderer.domElement);
-              const containerComputedStyle = window.getComputedStyle(container);
-              console.log('[PixelBlast] TEST: Canvas visibility check:', {
-                canvasInDOM: document.body.contains(renderer.domElement) || container.contains(renderer.domElement),
-                canvasRect: {
-                  x: canvasRect.x,
-                  y: canvasRect.y,
-                  width: canvasRect.width,
-                  height: canvasRect.height,
-                  top: canvasRect.top,
-                  left: canvasRect.left
-                },
-                containerRect: {
-                  x: containerRect.x,
-                  y: containerRect.y,
-                  width: containerRect.width,
-                  height: containerRect.height,
-                  top: containerRect.top,
-                  left: containerRect.left
-                },
-                canvasStyles: {
-                  display: canvasComputedStyle.display,
-                  visibility: canvasComputedStyle.visibility,
-                  opacity: canvasComputedStyle.opacity,
-                  zIndex: canvasComputedStyle.zIndex,
-                  position: canvasComputedStyle.position,
-                  width: canvasComputedStyle.width,
-                  height: canvasComputedStyle.height
-                },
-                containerStyles: {
-                  zIndex: containerComputedStyle.zIndex,
-                  position: containerComputedStyle.position,
-                  overflow: containerComputedStyle.overflow
-                },
-                canvasParent: renderer.domElement.parentElement?.tagName,
-                canvasSiblings: Array.from(renderer.domElement.parentElement?.children || []).map(el => ({
-                  tag: el.tagName,
-                  zIndex: window.getComputedStyle(el).zIndex,
-                  display: window.getComputedStyle(el).display
-                }))
-              });
-              
-              // Try drawing directly to WebGL to see if it renders (bypass composer)
-              console.log('[PixelBlast] TEST: Attempting direct render bypass...');
-              
-              // First test: simple red clear
-              gl.clearColor(1, 0, 0, 1); // Red
-              gl.clear(gl.COLOR_BUFFER_BIT);
-              console.log('[PixelBlast] TEST: Red clear applied');
-              
-              // Second test: render without composer
-              renderer.render(scene, camera);
-              console.log('[PixelBlast] TEST: Direct renderer.render() called');
-              
-              // Third test: check what's actually on the canvas
-              const buffer = new Uint8Array(100 * 100 * 4);
-              gl.readPixels(0, 0, Math.min(100, renderer.domElement.width), Math.min(100, renderer.domElement.height), gl.RGBA, gl.UNSIGNED_BYTE, buffer);
-              const imageData = Array.from(buffer);
-              const hasNonTransparentPixels = imageData.some((val, idx) => idx % 4 === 3 && val > 0); // Check alpha channel
-              console.log('[PixelBlast] TEST: Canvas pixel data check:', {
-                hasNonTransparentPixels,
-                sampleAlphaValues: imageData.filter((_, i) => i % 4 === 3).slice(0, 20),
-                firstPixelRGBA: imageData.slice(0, 4),
-                nonZeroAlphaCount: imageData.filter((val, idx) => idx % 4 === 3 && val > 0).length
-              });
-              
-              // Fourth test: temporarily disable composer and render directly
-              if (composer) {
-                console.log('[PixelBlast] TEST: Temporarily bypassing composer...');
-                renderer.render(scene, camera);
-              }
-            }
-          }, 500);
-          */
+      const canvas = document.createElement('canvas');
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      renderer.domElement.style.display = 'block';
+      renderer.domElement.style.position = 'absolute';
+      renderer.domElement.style.top = '0';
+      renderer.domElement.style.left = '0';
+      renderer.domElement.style.zIndex = '0';
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      container.appendChild(renderer.domElement);
+      // Use black background so shader is visible
+      renderer.setClearColor(0x000000, 1);
       const uniforms = {
         uResolution: { value: new THREE.Vector2(0, 0) },
         uTime: { value: 0 },
@@ -625,26 +452,8 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         uRippleIntensity: { value: rippleIntensityScale },
         uEdgeFade: { value: edgeFade }
       };
-      
-      console.log('[PixelBlast] Uniforms initialized:', {
-        uColor: `#${uniforms.uColor.value.getHexString()}`,
-        uPixelSize: uniforms.uPixelSize.value,
-        uScale: uniforms.uScale.value,
-        uDensity: uniforms.uDensity.value,
-        uShapeType: uniforms.uShapeType.value,
-        uPixelJitter: uniforms.uPixelJitter.value,
-        uEdgeFade: uniforms.uEdgeFade.value,
-        uEnableRipples: uniforms.uEnableRipples.value
-      });
       const scene = new THREE.Scene();
       const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-      
-      // TEMPORARY: Use a simple solid color material to test visibility
-      const testMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff0000, // Bright red
-        transparent: false
-      });
-      
       const material = new THREE.ShaderMaterial({
         vertexShader: VERTEX_SRC,
         fragmentShader: FRAGMENT_SRC,
@@ -653,76 +462,27 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         depthTest: false,
         depthWrite: false,
         blending: THREE.NormalBlending,
-        premultipliedAlpha: false
+        premultipliedAlpha: false,
+        glslVersion: THREE.GLSL3
       });
-      
-      console.log('[PixelBlast] Shader material config:', {
-        transparent: material.transparent,
-        blending: material.blending,
-        premultipliedAlpha: material.premultipliedAlpha
-      });
-      
-      // Check for shader compilation errors
-      material.onBeforeCompile = () => {
-        console.log('[PixelBlast] Shader compiling...');
-      };
-      
-      // Add error checking after first render
-      const checkShaderErrors = () => {
-        const gl = renderer.getContext();
-        const program = material.shaderProgram;
-        if (program) {
-          if (!(program as any).linkStatus) {
-            console.error('[PixelBlast] Shader program link error:', gl.getProgramInfoLog(program));
-          }
-          const vertexShader = gl.createShader(gl.VERTEX_SHADER) || 0;
-          if (vertexShader && !(vertexShader as any).compileStatus) {
-            console.error('[PixelBlast] Vertex shader error:', gl.getShaderInfoLog(vertexShader));
-          }
-        }
-      };
-      
-      console.log('[PixelBlast] Shader material created:', {
-        hasVertexShader: !!material.vertexShader,
-        hasFragmentShader: !!material.fragmentShader,
-        transparent: material.transparent,
-        uniforms: Object.keys(uniforms),
-        color: uniforms.uColor.value,
-        uColorHex: `#${uniforms.uColor.value.getHexString()}`
-      });
-      
-      // Check for errors after a short delay
-      setTimeout(checkShaderErrors, 100);
-      
       const quadGeom = new THREE.PlaneGeometry(2, 2);
-      
-      // TEMPORARY TEST: Use solid color material first to verify canvas visibility
-      const quad = new THREE.Mesh(quadGeom, USE_TEST_MATERIAL ? testMaterial : material);
+      const quad = new THREE.Mesh(quadGeom, material);
       scene.add(quad);
-      console.log('[PixelBlast] Quad mesh added to scene:', { 
-        sceneChildren: scene.children.length,
-        usingTestMaterial: USE_TEST_MATERIAL,
-        materialType: USE_TEST_MATERIAL ? 'MeshBasicMaterial (RED)' : 'ShaderMaterial'
-      });
       const clock = new THREE.Clock();
       const setSize = () => {
         const w = container.clientWidth || 1;
         const h = container.clientHeight || 1;
-        console.log('[PixelBlast] setSize called:', { w, h, canvasWidth: renderer.domElement.width, canvasHeight: renderer.domElement.height });
         renderer.setSize(w, h, false);
-        const finalW = renderer.domElement.width;
-        const finalH = renderer.domElement.height;
-        uniforms.uResolution.value.set(finalW, finalH);
-        console.log('[PixelBlast] Renderer size set:', { finalW, finalH, resolution: uniforms.uResolution.value });
+        uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
         if (threeRef.current?.composer)
-          threeRef.current.composer.setSize(finalW, finalH);
+          threeRef.current.composer.setSize(renderer.domElement.width, renderer.domElement.height);
         uniforms.uPixelSize.value = pixelSize * renderer.getPixelRatio();
       };
       setSize();
       const ro = new ResizeObserver(setSize);
       ro.observe(container);
       const randomFloat = () => {
-        if (typeof window !== 'undefined' && (window as any).crypto?.getRandomValues !== undefined) {
+        if (typeof window !== 'undefined' && (window as any).crypto?.getRandomValues) {
           const u32 = new Uint32Array(1);
           window.crypto.getRandomValues(u32);
           return u32[0] / 0xffffffff;
@@ -738,21 +498,14 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         touch.radiusScale = liquidRadius;
         composer = new EffectComposer(renderer);
         const renderPass = new RenderPass(scene, camera);
-        renderPass.renderToScreen = false; // Don't render to screen, go through effect pass
         liquidEffect = createLiquidEffect(touch.texture, {
           strength: liquidStrength,
           freq: liquidWobbleSpeed
         });
         const effectPass = new EffectPass(camera, liquidEffect);
-        effectPass.renderToScreen = true; // This should render to screen
+        effectPass.renderToScreen = true;
         composer.addPass(renderPass);
         composer.addPass(effectPass);
-        
-        console.log('[PixelBlast] Composer setup:', {
-          passes: composer.passes.length,
-          renderPassRenderToScreen: renderPass.renderToScreen,
-          effectPassRenderToScreen: effectPass.renderToScreen
-        });
       }
       if (noiseAmount > 0) {
         if (!composer) {
@@ -771,7 +524,7 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         );
         const noisePass = new EffectPass(camera, noiseEffect);
         noisePass.renderToScreen = true;
-        if (composer && composer.passes.length > 0) composer.passes.forEach((p: any) => ((p).renderToScreen = false));
+        if (composer && composer.passes.length > 0) composer.passes.forEach(p => ((p as any).renderToScreen = false));
         composer.addPass(noisePass);
       }
       if (composer) composer.setSize(renderer.domElement.width, renderer.domElement.height);
@@ -807,123 +560,24 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         passive: true
       });
       let raf = 0;
-      let frameCount = 0;
       const animate = () => {
         if (autoPauseOffscreen && !visibilityRef.current.visible) {
           raf = requestAnimationFrame(animate);
           return;
         }
-        frameCount++;
-        if (frameCount === 1) {
-          console.log('[PixelBlast] First animation frame rendered!', {
-            time: uniforms.uTime.value,
-            resolution: { x: uniforms.uResolution.value.x, y: uniforms.uResolution.value.y },
-            color: {
-              r: uniforms.uColor.value.r,
-              g: uniforms.uColor.value.g,
-              b: uniforms.uColor.value.b,
-              hex: `#${uniforms.uColor.value.getHexString()}`
-            },
-            uniforms: {
-              uPixelSize: uniforms.uPixelSize.value,
-              uScale: uniforms.uScale.value,
-              uDensity: uniforms.uDensity.value,
-              uPixelJitter: uniforms.uPixelJitter.value,
-              uShapeType: uniforms.uShapeType.value,
-              uEdgeFade: uniforms.uEdgeFade.value,
-              uEnableRipples: uniforms.uEnableRipples.value
-            },
-            canvasVisible: renderer.domElement.offsetWidth > 0 && renderer.domElement.offsetHeight > 0
-          });
-          
-          // Check pixel AFTER rendering (whether composer or direct)
-          requestAnimationFrame(() => {
-            const gl = renderer.getContext();
-            const buffer = new Uint8Array(4);
-            // Sample multiple points across the canvas
-            const samples = [
-              { x: Math.floor(uniforms.uResolution.value.x / 2), y: Math.floor(uniforms.uResolution.value.y / 2) },
-              { x: Math.floor(uniforms.uResolution.value.x / 4), y: Math.floor(uniforms.uResolution.value.y / 4) },
-              { x: Math.floor(uniforms.uResolution.value.x * 3 / 4), y: Math.floor(uniforms.uResolution.value.y * 3 / 4) }
-            ];
-            
-            const results = samples.map(sample => {
-              const buf = new Uint8Array(4);
-              gl.readPixels(sample.x, sample.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-              return { pos: sample, rgba: Array.from(buf), alpha: buf[3] };
-            });
-            
-            const hasVisiblePixels = results.some(r => r.alpha > 0);
-            console.log('[PixelBlast] Pixel samples after render:', {
-              hasVisiblePixels,
-              samples: results,
-              avgAlpha: results.reduce((sum, r) => sum + r.alpha, 0) / results.length
-            });
-            
-            if (!hasVisiblePixels) {
-              console.warn('[PixelBlast] ⚠️ All sampled pixels are transparent! Shader may need higher density.');
-              console.warn('[PixelBlast] 💡 Try increasing patternDensity. Current value:', uniforms.uDensity.value);
-            }
-          });
-        }
-        if (frameCount === 60) {
-          console.log('[PixelBlast] 60 frames rendered successfully', {
-            time: uniforms.uTime.value,
-            usingComposer: !!composer,
-            rendererInfo: {
-              width: renderer.domElement.width,
-              height: renderer.domElement.height,
-              visible: renderer.domElement.offsetWidth > 0
-            }
-          });
-        }
         uniforms.uTime.value = timeOffset + clock.getElapsedTime() * speedRef.current;
-        if (liquidEffect) ((liquidEffect as any).uniforms as any).get('uTime').value = uniforms.uTime.value;
+        if (liquidEffect) (liquidEffect as any).uniforms.get('uTime').value = uniforms.uTime.value;
         
-        // TEMPORARY: Bypass composer to test if shader renders directly
-        const BYPASS_COMPOSER_FOR_TEST = true; // Set to false to re-enable composer
-        if (USE_TEST_MATERIAL) {
-          // Skip composer for test material
+        // Bypass composer - it's causing transparency issues with the shader
+        // Direct render ensures the shader output is visible
+        if (composer) {
+          // Skip composer, render shader directly
           renderer.render(scene, camera);
-        } else if (BYPASS_COMPOSER_FOR_TEST && composer) {
-          // Bypass composer and render shader directly to test
-          if (frameCount === 1 || frameCount === 10) {
-            console.log('[PixelBlast] TEST: Bypassing composer, rendering shader directly');
-          }
-          renderer.render(scene, camera);
-        } else if (composer) {
-          if (touch) touch.update();
-          composer.passes.forEach((p: any)    => {
-            const effs = (p as any).effects as any[] | undefined;
-            if (effs)
-              effs.forEach((eff: any) => {
-                const u = (eff.uniforms as any)?.get('uTime');
-                if (u) u.value = uniforms.uTime.value;
-              });
-          });
-          
-          // DEBUG: Check if composer is actually rendering
-          if (frameCount === 1 || frameCount === 10) {
-            console.log('[PixelBlast] DEBUG: Using composer.render()', {
-              frameCount,
-              composerPasses: composer.passes.length,
-              hasRenderPass: composer.passes.some((p: any) => p instanceof RenderPass),
-              hasEffectPass: composer.passes.some((p: any) => p instanceof EffectPass),
-              renderToScreen: composer.passes.map((p: any) => p.renderToScreen),
-              rendererSize: { width: renderer.domElement.width, height: renderer.domElement.height }
-            });
-          }
-          
-          composer.render();
         } else {
-          if (frameCount === 1) {
-            console.log('[PixelBlast] DEBUG: Using direct renderer.render()');
-          }
           renderer.render(scene, camera);
         }
         raf = requestAnimationFrame(animate);
       };
-      console.log('[PixelBlast] Starting animation loop');
       raf = requestAnimationFrame(animate);
       threeRef.current = {
         renderer,
@@ -941,79 +595,7 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         touch,
         liquidEffect
       };
-      
-      // Wait a frame for styles to apply, then check visibility
-      requestAnimationFrame(() => {
-        const canvasStyle = window.getComputedStyle(renderer.domElement);
-        const containerStyle = window.getComputedStyle(container);
-        const canvasRect = renderer.domElement.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        
-        console.log('[PixelBlast] 🔍 DETAILED VISIBILITY CHECK:', {
-          canvasInDOM: container.contains(renderer.domElement),
-          canvasVisibleInViewport: canvasRect.width > 0 && canvasRect.height > 0,
-          canvasDimensions: {
-            width: renderer.domElement.width,
-            height: renderer.domElement.height,
-            clientWidth: renderer.domElement.clientWidth,
-            clientHeight: renderer.domElement.clientHeight,
-            offsetWidth: renderer.domElement.offsetWidth,
-            offsetHeight: renderer.domElement.offsetHeight
-          },
-          canvasRect: {
-            x: canvasRect.x,
-            y: canvasRect.y,
-            width: canvasRect.width,
-            height: canvasRect.height,
-            top: canvasRect.top,
-            left: canvasRect.left,
-            bottom: canvasRect.bottom,
-            right: canvasRect.right
-          },
-          containerRect: {
-            x: containerRect.x,
-            y: containerRect.y,
-            width: containerRect.width,
-            height: containerRect.height
-          },
-          canvasStyles: {
-            display: canvasStyle.display,
-            position: canvasStyle.position,
-            zIndex: canvasStyle.zIndex,
-            opacity: canvasStyle.opacity,
-            visibility: canvasStyle.visibility,
-            width: canvasStyle.width,
-            height: canvasStyle.height,
-            top: canvasStyle.top,
-            left: canvasStyle.left,
-            backgroundColor: canvasStyle.backgroundColor
-          },
-          containerStyles: {
-            position: containerStyle.position,
-            zIndex: containerStyle.zIndex,
-            overflow: containerStyle.overflow,
-            width: containerStyle.width,
-            height: containerStyle.height,
-            backgroundColor: containerStyle.backgroundColor
-          },
-          canvasParent: {
-            tag: renderer.domElement.parentElement?.tagName,
-            classes: renderer.domElement.parentElement?.className,
-            styles: renderer.domElement.parentElement ? window.getComputedStyle(renderer.domElement.parentElement) : null
-          },
-          allChildren: Array.from(container.children).map((el, idx) => ({
-            index: idx,
-            tag: el.tagName,
-            classes: el.className,
-            zIndex: window.getComputedStyle(el).zIndex,
-            display: window.getComputedStyle(el).display,
-            opacity: window.getComputedStyle(el).opacity,
-            visibility: window.getComputedStyle(el).visibility
-          }))
-        });
-      });
     } else {
-      console.log('[PixelBlast] Updating existing Three.js instance');
       const t = threeRef.current!;
       t.uniforms.uShapeType.value = SHAPE_MAP[variant] ?? 0;
       t.uniforms.uPixelSize.value = pixelSize * t.renderer.getPixelRatio();
@@ -1036,21 +618,6 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
       }
       if (t.touch) t.touch.radiusScale = liquidRadius;
     }
-      
-      console.log('[PixelBlast] initializeThree completed');
-    } catch (error) {
-      console.error('[PixelBlast] Error in initializeThree:', error);
-    }
-    };
-    
-    if (!threeRef.current) {
-      console.log('[PixelBlast] No existing instance, calling init()');
-      init();
-    } else {
-      console.log('[PixelBlast] Existing instance found, calling initializeThree()');
-      initializeThree();
-    }
-    
     prevConfigRef.current = cfg;
     return () => {
       if (threeRef.current && mustReinit) return;
@@ -1088,23 +655,11 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
     speed
   ]);
 
-  console.log('[PixelBlast] Component render, containerRef:', containerRef.current);
-  
   return (
     <div
-      ref={(el) => {
-        containerRef.current = el;
-        if (el) {
-          console.log('[PixelBlast] Container ref set:', {
-            element: el,
-            clientWidth: el.clientWidth,
-            clientHeight: el.clientHeight,
-            style: window.getComputedStyle(el)
-          });
-        }
-      }}
+      ref={containerRef}
       className={`w-full h-full relative overflow-hidden ${className ?? ''}`}
-      style={{ width: '100%', height: '100%', ...style }}
+      style={style}
       aria-label="PixelBlast interactive background"
     />
   );
