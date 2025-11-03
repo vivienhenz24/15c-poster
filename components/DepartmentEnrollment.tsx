@@ -17,14 +17,13 @@ type DepartmentEnrollmentProps = {
 
 const DepartmentEnrollment: React.FC<DepartmentEnrollmentProps> = ({
   className = '',
-  maxDepartments = 40,
+  maxDepartments = 50,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DepartmentData[]>([]);
-  const [containerWidth, setContainerWidth] = useState(0);
 
   // Load and parse CSV data
   useEffect(() => {
@@ -33,13 +32,13 @@ const DepartmentEnrollment: React.FC<DepartmentEnrollmentProps> = ({
         const csvData = await d3.csv('/data/qguide_departments.csv');
         
         const parsed = csvData
-          .map((d) => ({
-            department: d.department || '',
+        .map((d) => ({
+          department: d.department || '',
             total_enrollment: parseInt(d.total_enrollment || '0', 10),
             num_courses: parseInt(d.num_courses || '0', 10),
             avg_rating: parseFloat(d.avg_rating || '0'),
           }))
-          .filter((d) => d.total_enrollment > 0)
+          .filter((d) => d.total_enrollment > 0 && d.department !== 'GENED') // Remove GENED
           .sort((a, b) => b.total_enrollment - a.total_enrollment)
           .slice(0, maxDepartments);
 
@@ -55,157 +54,237 @@ const DepartmentEnrollment: React.FC<DepartmentEnrollmentProps> = ({
     loadData();
   }, [maxDepartments]);
 
-  // Track container width for responsive rendering
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    const updateWidth = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.getBoundingClientRect().width);
-      }
-    };
-    
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
-  }, []);
-
-  // Render visualization
+  // Render treemap visualization on canvas
   useEffect(() => {
     if (!data.length || !canvasRef.current || !containerRef.current) return;
 
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const displayHeight = 900;
+    const displayWidth = displayHeight; // Make it square
     
-    const width = containerWidth || rect.width;
-    const height = Math.max(600, data.length * 35 + 100);
+    // Set internal resolution higher for high-DPI displays
+    const height = displayHeight * dpr;
+    const width = displayWidth * dpr;
     
     canvas.width = width;
     canvas.height = height;
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
+    // Scale context to account for device pixel ratio
+    ctx.scale(dpr, dpr);
+
+    // Clear canvas with black background (now using display dimensions)
     ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-    // Margins
-    const margin = { top: 40, right: 120, bottom: 60, left: 200 };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
+    // Margins (using display dimensions)
+    const margin = { top: 40, right: 20, bottom: 20, left: 20 };
+    const innerWidth = displayWidth - margin.left - margin.right;
+    const innerHeight = displayHeight - margin.top - margin.bottom;
 
-    // Scales
+    // Prepare hierarchical data for treemap
+    // D3 hierarchy expects children array directly
+    const root = d3.hierarchy({ children: data } as { children: DepartmentData[] })
+      .sum((d: unknown) => {
+        // The sum function receives the data object
+        // For leaf nodes (DepartmentData), it has total_enrollment
+        // For parent nodes, it has children array
+        const item = d as DepartmentData | { children: DepartmentData[] };
+        if ('total_enrollment' in item) {
+          return (item as DepartmentData).total_enrollment;
+        }
+        return 0; // Parent nodes don't have values
+      })
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
+
+    // Create treemap layout
+    const treemap = d3.treemap()
+      .size([innerWidth, innerHeight])
+      .paddingInner(2)
+      .paddingOuter(2)
+      .round(true);
+
+    treemap(root as d3.HierarchyNode<unknown>);
+
+    // Color scale - inverted: darkest = most enrollment
     const maxEnrollment = d3.max(data, (d) => d.total_enrollment) || 1;
-    const xScale = d3.scaleLinear().domain([0, maxEnrollment]).range([0, innerWidth]);
-    const yScale = d3.scaleBand()
-      .domain(data.map((d) => d.department))
-      .range([0, innerHeight])
-      .padding(0.2);
-
-    // Crimson color scheme
-    const crimson = '#DC143C';
-    const crimsonLight = '#FF6B8A';
-    const crimsonDark = '#B0123A';
+    const colorScale = d3.scaleSequential((t) => {
+      // Inverted: light crimson (low enrollment) to dark crimson (high enrollment)
+      const light = d3.rgb(255, 107, 138); // Light crimson #FF6B8A
+      const dark = d3.rgb(176, 18, 58); // Dark crimson #B0123A
+      return d3.interpolateRgb(light, dark)(t);
+    }).domain([0, maxEnrollment]);
 
     // Translate to margin area
     ctx.save();
     ctx.translate(margin.left, margin.top);
 
-    // Draw bars
-    data.forEach((d, i) => {
-      const barHeight = yScale.bandwidth();
-      const barWidth = xScale(d.total_enrollment);
-      const y = yScale(d.department) || 0;
+    // Draw rectangles - after treemap layout, nodes have x0, y0, x1, y1 properties
+    const leaves = root.leaves();
+    
+    if (leaves.length === 0) {
+      console.error('No leaves found in treemap');
+      ctx.restore();
+      return;
+    }
+    
+    leaves.forEach((node) => {
+      // The data property contains the DepartmentData for leaf nodes
+      const treemapNode = node as unknown as d3.HierarchyRectangularNode<DepartmentData>;
+      const deptData = treemapNode.data as DepartmentData;
+      
+      // Get coordinates from treemap layout
+      const x0 = treemapNode.x0;
+      const y0 = treemapNode.y0;
+      const x1 = treemapNode.x1;
+      const y1 = treemapNode.y1;
+      
+      const rectWidth = x1 - x0;
+      const rectHeight = y1 - y0;
+      const area = rectWidth * rectHeight;
 
-      // Gradient for bars
-      const gradient = ctx.createLinearGradient(0, y, barWidth, y);
-      gradient.addColorStop(0, crimsonDark);
-      gradient.addColorStop(1, crimson);
+      // Get color from scale
+      const color = colorScale(deptData.total_enrollment);
+      const rgb = d3.rgb(color);
 
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, y, barWidth, barHeight);
+      // Draw rectangle
+      ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+      ctx.fillRect(x0, y0, rectWidth, rectHeight);
 
-      // Bar outline
-      ctx.strokeStyle = crimsonLight;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(0, y, barWidth, barHeight);
+      // Draw black stroke
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x0, y0, rectWidth, rectHeight);
 
-      // Department label on the left
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '14px "Helvetica Neue", Helvetica, Arial, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(d.department, -10, y + barHeight / 2);
-
-      // Enrollment value on the bar
-      if (barWidth > 80) {
+      // Add labels if rectangle is large enough
+      if (area > 2000) {
+        // Department name
         ctx.fillStyle = '#FFFFFF';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 12px "Helvetica Neue", Helvetica, Arial, sans-serif';
+        ctx.font = `bold ${Math.min(rectWidth / 10, 16)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText(
-          d.total_enrollment.toLocaleString(),
-          8,
-          y + barHeight / 2
+          deptData.department,
+          x0 + rectWidth / 2,
+          y0 + rectHeight / 2 - 8
+        );
+
+        // Enrollment value
+        ctx.font = `${Math.min(rectWidth / 12, 12)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(
+          deptData.total_enrollment.toLocaleString(),
+          x0 + rectWidth / 2,
+          y0 + rectHeight / 2 + 12
+        );
+      } else if (area > 500) {
+        // Just department name for medium rectangles
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `bold ${Math.min(rectWidth / 8, 12)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+        ctx.fillText(
+          deptData.department,
+          x0 + rectWidth / 2,
+          y0 + rectHeight / 2
         );
       }
     });
 
-    // Draw x-axis
-    ctx.strokeStyle = '#666666';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, innerHeight);
-    ctx.lineTo(innerWidth, innerHeight);
-    ctx.stroke();
-
-    // X-axis ticks and labels
-    const tickCount = 10;
-    const ticks = xScale.ticks(tickCount);
-    ticks.forEach((tick) => {
-      const x = xScale(tick);
-      ctx.strokeStyle = '#666666';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, innerHeight);
-      ctx.lineTo(x, innerHeight + 5);
-      ctx.stroke();
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '11px "Helvetica Neue", Helvetica, Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(tick.toLocaleString(), x, innerHeight + 8);
-    });
-
-    // X-axis label
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 14px "Helvetica Neue", Helvetica, Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('Total Enrollment', innerWidth / 2, innerHeight + 45);
-
-    // Y-axis line
-    ctx.strokeStyle = '#666666';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(0, innerHeight);
-    ctx.stroke();
-
     // Title
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 20px "Helvetica Neue", Helvetica, Arial, sans-serif';
-    ctx.textAlign = 'center';
+    ctx.font = '20px "Helvetica Neue", Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('Student Enrollment by Department', innerWidth / 2, -25);
+    ctx.fillText('Student Enrollment by Department', innerWidth / 2, -20);
 
-    ctx.restore();
-  }, [data, containerWidth]);
+      ctx.restore();
+
+    // Store data for tooltip interactions
+    const getCellAtPoint = (x: number, y: number) => {
+      // Adjust for margins
+      const adjustedX = x - margin.left;
+      const adjustedY = y - margin.top;
+      
+      return leaves.find((node) => {
+        const treemapNode = node as unknown as d3.HierarchyRectangularNode<DepartmentData>;
+        const x0 = treemapNode.x0;
+        const y0 = treemapNode.y0;
+        const x1 = treemapNode.x1;
+        const y1 = treemapNode.y1;
+        return adjustedX >= x0 && adjustedX <= x1 &&
+               adjustedY >= y0 && adjustedY <= y1;
+      });
+    };
+
+    // Tooltip element
+    let tooltip: HTMLDivElement | null = null;
+
+    const showTooltip = (event: MouseEvent, deptData: DepartmentData) => {
+      if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.style.position = 'absolute';
+        tooltip.style.padding = '8px 12px';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.9)';
+        tooltip.style.color = '#FFFFFF';
+        tooltip.style.border = '1px solid #DC143C';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.zIndex = '1000';
+        document.body.appendChild(tooltip);
+      }
+
+      tooltip.style.opacity = '1';
+      tooltip.style.left = `${event.pageX + 10}px`;
+      tooltip.style.top = `${event.pageY - 10}px`;
+      tooltip.innerHTML = `
+        <strong>${deptData.department}</strong><br/>
+        Enrollment: ${deptData.total_enrollment.toLocaleString()}<br/>
+        Courses: ${deptData.num_courses}<br/>
+        Avg Rating: ${deptData.avg_rating.toFixed(2)}
+      `;
+    };
+
+    const hideTooltip = () => {
+      if (tooltip) {
+        tooltip.style.opacity = '0';
+      }
+    };
+
+      const handleMouseMove = (event: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+      const cell = getCellAtPoint(x, y);
+      if (cell) {
+        const treemapNode = cell as unknown as d3.HierarchyRectangularNode<DepartmentData>;
+        showTooltip(event, treemapNode.data as DepartmentData);
+      } else {
+        hideTooltip();
+        }
+      };
+
+      canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseout', hideTooltip);
+
+      return () => {
+        canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseout', hideTooltip);
+      if (tooltip) {
+        document.body.removeChild(tooltip);
+      }
+    };
+  }, [data]);
 
   return (
-    <section className={`w-full bg-black text-white pb-12 pt-0 ${className}`}>
+    <section className={`w-full bg-black text-white pb-8 pt-0 ${className}`}>
       <div ref={containerRef} className="w-full px-6">
         {loading && (
           <div className="flex items-center justify-center h-96">
@@ -218,11 +297,12 @@ const DepartmentEnrollment: React.FC<DepartmentEnrollmentProps> = ({
           </div>
         )}
         {!loading && !error && (
-          <canvas
-            ref={canvasRef}
-            className="w-full h-auto"
-            style={{ display: 'block' }}
-          />
+          <div className="flex justify-center">
+            <canvas
+              ref={canvasRef}
+              style={{ display: 'block' }}
+            />
+          </div>
         )}
       </div>
     </section>
@@ -230,4 +310,3 @@ const DepartmentEnrollment: React.FC<DepartmentEnrollmentProps> = ({
 };
 
 export default DepartmentEnrollment;
-
