@@ -5,7 +5,6 @@
 import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
 import DepartmentEnrollment from '@/components/DepartmentEnrollment';
-import WorkloadTime from '@/components/WorkloadTime';
 
 export default function Home() {
   return (
@@ -14,7 +13,7 @@ export default function Home() {
       <section className="flex flex-col w-full items-center justify-center px-6 min-h-[600px] py-16">
         <div style={{ width: '100%', height: '600px', position: 'relative' }}>
           <PixelBlast
-            variant="diamond"
+            variant="square"
             pixelSize={6}
             color="#DC143C"
             patternScale={3}
@@ -56,9 +55,6 @@ export default function Home() {
       </section>
       <div className="mt-32 mb-8">
         <DepartmentEnrollment />
-      </div>
-      <div className="mt-32 mb-8">
-        <WorkloadTime />
       </div>
     </main>
   );

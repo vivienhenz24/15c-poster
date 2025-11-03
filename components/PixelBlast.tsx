@@ -386,6 +386,9 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
     composer?: EffectComposer;
     touch?: ReturnType<typeof createTouchTexture>;
     liquidEffect?: Effect;
+    lastCursorUpdateTime?: number;
+    targetCursorPos?: THREE.Vector2;
+    currentCursorPos?: THREE.Vector2;
   } | null>(null);
   const prevConfigRef = useRef<{ antialias: boolean; liquid: boolean; noiseAmount: number } | null>(null);
   useEffect(() => {
@@ -547,22 +550,64 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
           h: renderer.domElement.height
         };
       };
-      const onPointerDown = (e: PointerEvent) => {
-        const { fx, fy } = mapToPixels(e);
-        const ix = threeRef.current?.clickIx ?? 0;
-        uniforms.uClickPos.value[ix].set(fx, fy);
-        uniforms.uClickTimes.value[ix] = uniforms.uTime.value;
-        if (threeRef.current) threeRef.current.clickIx = (ix + 1) % MAX_CLICKS;
-      };
+      const CURSOR_UPDATE_INTERVAL = 0.15; // Update cursor time less frequently for smoother ripples
+      const SMOOTH_FACTOR = 0.15; // Smooth interpolation factor (lower = smoother but slower)
+      
+      // Initialize cursor position vectors for smooth interpolation
+      const targetCursorPos = new THREE.Vector2(-1, -1);
+      const currentCursorPos = new THREE.Vector2(-1, -1);
+      
       const onPointerMove = (e: PointerEvent) => {
-        if (!touch) return;
         const { fx, fy, w, h } = mapToPixels(e);
-        touch.addTouch({ x: fx / w, y: fy / h });
+        // Update target position for smooth interpolation
+        if (enableRipples) {
+          targetCursorPos.set(fx, fy);
+          // Initialize current position if it's the first move
+          if (currentCursorPos.x < 0) {
+            currentCursorPos.set(fx, fy);
+            if (uniforms.uClickPos.value.length > 0) {
+              uniforms.uClickPos.value[0].set(fx, fy);
+              uniforms.uClickTimes.value[0] = uniforms.uTime.value - 0.1; // Slight offset for immediate visibility
+            }
+          }
+        }
+        // Handle liquid effect touch texture
+        if (touch) {
+          touch.addTouch({ x: fx / w, y: fy / h });
+        }
       };
-      renderer.domElement.addEventListener('pointerdown', onPointerDown, {
+      const onPointerEnter = (e: PointerEvent) => {
+        // Initialize cursor position when entering
+        const { fx, fy } = mapToPixels(e);
+        if (enableRipples) {
+          targetCursorPos.set(fx, fy);
+          currentCursorPos.set(fx, fy);
+          if (uniforms.uClickPos.value.length > 0) {
+            uniforms.uClickPos.value[0].set(fx, fy);
+            uniforms.uClickTimes.value[0] = uniforms.uTime.value - 0.1;
+            if (threeRef.current) {
+              threeRef.current.lastCursorUpdateTime = uniforms.uTime.value;
+            }
+          }
+        }
+      };
+      const onPointerLeave = () => {
+        // Reset cursor position when leaving the canvas
+        if (enableRipples) {
+          targetCursorPos.set(-1, -1);
+          currentCursorPos.set(-1, -1);
+          if (uniforms.uClickPos.value.length > 0) {
+            uniforms.uClickPos.value[0].set(-1, -1);
+          }
+        }
+      };
+      renderer.domElement.addEventListener('pointermove', onPointerMove, {
         passive: true
       });
-      renderer.domElement.addEventListener('pointermove', onPointerMove, {
+      renderer.domElement.addEventListener('pointerenter', onPointerEnter, {
+        passive: true
+      });
+      renderer.domElement.addEventListener('pointerleave', onPointerLeave, {
         passive: true
       });
       let raf = 0;
@@ -571,7 +616,39 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
           raf = requestAnimationFrame(animate);
           return;
         }
+        const dt = clock.getDelta(); // Get delta time for frame-rate independent calculations
         uniforms.uTime.value = timeOffset + clock.getElapsedTime() * speedRef.current;
+        
+        // Smoothly interpolate cursor position
+        if (enableRipples && uniforms.uClickPos.value.length > 0) {
+          if (targetCursorPos.x >= 0 && currentCursorPos.x >= 0) {
+            // Smooth interpolation towards target (frame-rate independent)
+            const lerpFactor = Math.min(1.0, SMOOTH_FACTOR * (1.0 + dt * 60));
+            currentCursorPos.lerp(targetCursorPos, lerpFactor);
+            
+            // Update uniform with smoothed position
+            uniforms.uClickPos.value[0].copy(currentCursorPos);
+            
+            // Periodically update cursor time to create continuous ripple effect
+            // Only update time if cursor has moved significantly or enough time has passed
+            if (threeRef.current) {
+              const timeSinceUpdate = uniforms.uTime.value - (threeRef.current.lastCursorUpdateTime ?? 0);
+              // Check distance from target to see if cursor is actively moving
+              const distanceToTarget = currentCursorPos.distanceTo(targetCursorPos);
+              
+              // Update time if enough time passed or if cursor is moving (not settled)
+              if (timeSinceUpdate > CURSOR_UPDATE_INTERVAL || distanceToTarget > 5) {
+                // Update time to create new ripple, but keep it slightly in the past for smoother effect
+                uniforms.uClickTimes.value[0] = uniforms.uTime.value - 0.05;
+                threeRef.current.lastCursorUpdateTime = uniforms.uTime.value;
+              }
+            }
+          } else if (targetCursorPos.x < 0) {
+            // Cursor left, fade out smoothly
+            uniforms.uClickPos.value[0].set(-1, -1);
+          }
+        }
+        
         if (liquidEffect) {
           const liquidUniforms = (liquidEffect as Effect & { uniforms: Map<string, THREE.Uniform> }).uniforms;
           const uTime = liquidUniforms.get('uTime');
@@ -603,7 +680,10 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         timeOffset,
         composer,
         touch,
-        liquidEffect
+        liquidEffect,
+        lastCursorUpdateTime: 0,
+        targetCursorPos,
+        currentCursorPos
       };
     } else {
       const t = threeRef.current!;
