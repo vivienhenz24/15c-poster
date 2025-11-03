@@ -5,6 +5,7 @@
 import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
 import DepartmentEnrollment from '@/components/DepartmentEnrollment';
+import WorkloadTime from '@/components/WorkloadTime';
 
 export default function Home() {
   return (
@@ -55,6 +56,9 @@ export default function Home() {
       </section>
       <div className="mt-32 mb-8">
         <DepartmentEnrollment />
+      </div>
+      <div className="mt-32 mb-8">
+        <WorkloadTime />
       </div>
     </main>
   );
