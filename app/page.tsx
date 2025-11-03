@@ -4,12 +4,13 @@
 
 import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
+import DepartmentEnrollment from '@/components/DepartmentEnrollment';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black text-white">
+    <main className="flex flex-col min-h-screen bg-black text-white">
       <TopBar />
-      <section className="flex flex-col w-full items-center justify-center px-6">
+      <section className="flex flex-col w-full items-center justify-center px-6 min-h-[600px] py-16">
         <div style={{ width: '100%', height: '600px', position: 'relative' }}>
           <PixelBlast
             variant="diamond"
@@ -52,6 +53,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+      <div className="mt-32 mb-8">
+        <DepartmentEnrollment />
+      </div>
     </main>
   );
 }
