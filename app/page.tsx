@@ -5,11 +5,14 @@
 import { useState } from 'react';
 import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
-import InputField from '@/components/InputField';
+import AudioRecorder from '@/components/AudioRecorder';
 import WatermarkingTabs, { WatermarkingTechnique } from '@/components/WatermarkingTabs';
+import AudioPlayer from '@/components/AudioPlayer';
 
 export default function Home() {
   const [selectedTechnique, setSelectedTechnique] = useState<WatermarkingTechnique>('coef-embedding');
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
   return (
     <main className="flex flex-col min-h-screen bg-black text-white">
@@ -18,10 +21,10 @@ export default function Home() {
         <div style={{ width: '100%', height: '600px', position: 'relative' }}>
           <PixelBlast
             variant="square"
-            pixelSize={6}
+            pixelSize={4}
             color="#DC143C"
             patternScale={3}
-            patternDensity={2.1}
+            patternDensity={2}
             pixelSizeJitter={0.5}
             enableRipples
             rippleSpeed={0.4}
@@ -37,7 +40,7 @@ export default function Home() {
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
             {/* Subtle dark backdrop for text area */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/40" />
+            <div className="absolute inset-0 bg-linear-to-b from-black/40 via-black/30 to-black/40" />
             
             <div className="relative z-10 flex flex-col items-center">
               <h1 className="text-5xl font-normal md:text-6xl max-w-3xl px-6 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] text-center">Hiding Secret Messages in Sound Waves</h1>
@@ -58,11 +61,17 @@ export default function Home() {
       <div className="mt-32 mb-8 px-6">
         <div className="w-full max-w-2xl mx-auto mb-6">
           <h2 className="text-2xl font-medium text-white text-center">
-            Select Your Watermarking Technique & Generate Your Text
+            Select Your Watermarking Technique & Record Your Audio
           </h2>
         </div>
         <WatermarkingTabs onTechniqueChange={setSelectedTechnique} />
-        <InputField placeholder="Enter your text here..." />
+        <AudioRecorder 
+          onAudioRecorded={(url, blob) => {
+            setAudioUrl(url);
+            setAudioBlob(blob);
+          }}
+        />
+        <AudioPlayer audioUrl={audioUrl} />
       </div>
     </main>
   );
