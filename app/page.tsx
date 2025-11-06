@@ -23,8 +23,7 @@ export default function Home() {
             pixelSize={4}
             color="#DC143C"
             patternScale={3}
-            patternDensity={2
-            }
+            patternDensity={2}
             pixelSizeJitter={0.5}
             enableRipples
             rippleSpeed={0.4}
@@ -40,7 +39,7 @@ export default function Home() {
           />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
             {/* Subtle dark backdrop for text area */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/40" />
+            <div className="absolute inset-0 bg-linear-to-b from-black/40 via-black/30 to-black/40" />
             
             <div className="relative z-10 flex flex-col items-center">
               <h1 className="text-5xl font-normal md:text-6xl max-w-3xl px-6 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] text-center">Hiding Secret Messages in Sound Waves</h1>
