@@ -23,7 +23,10 @@ const InputField: React.FC<InputFieldProps> = ({
   // Wait for Puter.js to load
   useEffect(() => {
     const checkPuter = () => {
-      if (typeof window !== 'undefined' && (window as any).puter) {
+      if (
+        typeof window !== 'undefined' &&
+        (window as Window & { puter?: { ai?: { txt2speech?: (text: string, options?: { voice?: string; engine?: string; language?: string }) => Promise<HTMLAudioElement> } } }).puter
+      ) {
         setPuterReady(true);
         console.log('[InputField] Puter.js is ready');
       } else {
@@ -48,7 +51,7 @@ const InputField: React.FC<InputFieldProps> = ({
     }
 
     // Check if Puter.js is loaded
-    if (!puterReady || typeof window === 'undefined' || !(window as any).puter) {
+    if (!puterReady || typeof window === 'undefined' || !(window as Window & { puter?: { ai?: { txt2speech?: (text: string, options?: { voice?: string; engine?: string; language?: string }) => Promise<HTMLAudioElement> } } })) {
       setError('Puter.js is not loaded yet. Please wait a moment and try again.');
       return;
     }
@@ -58,9 +61,9 @@ const InputField: React.FC<InputFieldProps> = ({
 
     try {
       // Use Puter.js for text-to-speech
-      const puter = (window as any).puter;
+      const puter = (window as Window & { puter?: { ai?: { txt2speech?: (text: string, options?: { voice?: string; engine?: string; language?: string }) => Promise<HTMLAudioElement> } } }).puter;
       
-      if (!puter.ai || !puter.ai.txt2speech) {
+      if (!puter?.ai?.txt2speech) {
         throw new Error('Puter.js TTS not available');
       }
 

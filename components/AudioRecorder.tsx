@@ -65,13 +65,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       };
       
       updateLevel();
-    } else {
+      return () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+      };
+    }
+
+    return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      setAudioLevel(0);
-    }
+    };
   }, [recordingState]);
 
   const startRecording = async () => {
@@ -138,6 +145,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const stopRecording = () => {
     if (mediaRecorderRef.current && recordingState === 'recording') {
       mediaRecorderRef.current.stop();
+
+      setAudioLevel(0);
       
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
@@ -185,6 +194,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     setRecordingState('idle');
     setRecordingDuration(0);
     setIsPlaying(false);
+    setAudioLevel(0);
     if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current = null;
