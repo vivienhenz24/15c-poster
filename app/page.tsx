@@ -7,9 +7,11 @@ import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
 import InputField from '@/components/InputField';
 import WatermarkingTabs, { WatermarkingTechnique } from '@/components/WatermarkingTabs';
+import AudioPlayer from '@/components/AudioPlayer';
 
 export default function Home() {
   const [selectedTechnique, setSelectedTechnique] = useState<WatermarkingTechnique>('coef-embedding');
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   return (
     <main className="flex flex-col min-h-screen bg-black text-white">
@@ -18,10 +20,11 @@ export default function Home() {
         <div style={{ width: '100%', height: '600px', position: 'relative' }}>
           <PixelBlast
             variant="square"
-            pixelSize={6}
+            pixelSize={4}
             color="#DC143C"
             patternScale={3}
-            patternDensity={2.1}
+            patternDensity={2
+            }
             pixelSizeJitter={0.5}
             enableRipples
             rippleSpeed={0.4}
@@ -62,7 +65,11 @@ export default function Home() {
           </h2>
         </div>
         <WatermarkingTabs onTechniqueChange={setSelectedTechnique} />
-        <InputField placeholder="Enter your text here..." />
+        <InputField 
+          placeholder="Enter your text here..." 
+          onAudioGenerated={setAudioUrl}
+        />
+        <AudioPlayer audioUrl={audioUrl} />
       </div>
     </main>
   );
