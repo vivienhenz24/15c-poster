@@ -15,7 +15,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, className = "" }) =
   return (
     <div className={`w-full max-w-2xl mx-auto mt-6 ${className}`}>
       <div className="px-4 py-4 rounded-md bg-white/10 border border-white/20">
-        <p className="text-sm text-white/80 mb-3">Generated Audio:</p>
+        <p className="text-sm text-white/80 mb-3">Recorded Audio:</p>
         <audio 
           controls 
           className="w-full"

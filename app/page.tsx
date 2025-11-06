@@ -5,13 +5,14 @@
 import { useState } from 'react';
 import PixelBlast from '@/components/PixelBlast';
 import TopBar from '@/components/TopBar';
-import InputField from '@/components/InputField';
+import AudioRecorder from '@/components/AudioRecorder';
 import WatermarkingTabs, { WatermarkingTechnique } from '@/components/WatermarkingTabs';
 import AudioPlayer from '@/components/AudioPlayer';
 
 export default function Home() {
   const [selectedTechnique, setSelectedTechnique] = useState<WatermarkingTechnique>('coef-embedding');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
   return (
     <main className="flex flex-col min-h-screen bg-black text-white">
@@ -60,13 +61,15 @@ export default function Home() {
       <div className="mt-32 mb-8 px-6">
         <div className="w-full max-w-2xl mx-auto mb-6">
           <h2 className="text-2xl font-medium text-white text-center">
-            Select Your Watermarking Technique & Generate Your Text
+            Select Your Watermarking Technique & Record Your Audio
           </h2>
         </div>
         <WatermarkingTabs onTechniqueChange={setSelectedTechnique} />
-        <InputField 
-          placeholder="Enter your text here..." 
-          onAudioGenerated={setAudioUrl}
+        <AudioRecorder 
+          onAudioRecorded={(url, blob) => {
+            setAudioUrl(url);
+            setAudioBlob(blob);
+          }}
         />
         <AudioPlayer audioUrl={audioUrl} />
       </div>
