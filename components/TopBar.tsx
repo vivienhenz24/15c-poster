@@ -11,7 +11,7 @@ const TopBar: React.FC<TopBarProps> = ({ className }) => {
     >
       <div className="px-6 py-4">
         <h2 className="text-white text-lg font-medium drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-          COMPSCI 1710 Final Project
+          PHYS 15C Lab Final Project
         </h2>
       </div>
     </div>
